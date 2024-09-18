@@ -31,11 +31,11 @@ contract OracleEntrypoint {
     ) public {
         require(nonces[_provider] == _nonce, "Invalid nonce for provider!");
         nonces[_provider]++;
-        bytes memory prefix = "\x19Oracle Signed Price Change:\n116";
+        bytes memory prefix = "\x19Oracle Signed Price Change:\n148";
         bytes32 prefixedHashMessage = keccak256(
             abi.encodePacked(
                 prefix,
-                abi.encodePacked(_provider, _nonce, _dataKey, _price)
+                abi.encodePacked(block.chainid, _provider, _nonce, _dataKey, _price)
             )
         );
         address signer = ecrecover(prefixedHashMessage, _v, _r, _s);
@@ -103,17 +103,22 @@ contract OracleEntrypoint {
         uint8 _v,
         bytes32 _r,
         bytes32 _s
-    ) public pure returns (bool) {
-        bytes32 hashed = keccak256(
+    ) public view returns (bool) {
+        bytes memory prefix = "\x19Oracle Signed Data Op:\n168";
+        bytes32 prefixedHashMessage = keccak256(
             abi.encodePacked(
-                _provider,
-                _requester,
-                _nonce,
-                _dataKey,
-                _dataValue
+                prefix,
+                abi.encodePacked(
+                    block.chainid,
+                    _provider,
+                    _nonce,
+                    _requester,
+                    _dataKey,
+                    _dataValue
+                )
             )
         );
-        address signer = ecrecover(hashed, _v, _r, _s);
+        address signer = ecrecover(prefixedHashMessage, _v, _r, _s);
         return signer == _provider;
     }
 }
