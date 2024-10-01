@@ -16,6 +16,7 @@ contract OracleEntrypoint {
 
     event DataConsumed(address provider, address requester, bytes32 dataKey);
 
+
     function deposit(address _target) public payable {
         deposits[_target] += msg.value;
     }
@@ -39,7 +40,8 @@ contract OracleEntrypoint {
             )
         );
         address signer = ecrecover(prefixedHashMessage, _v, _r, _s);
-        require(_provider == signer, "Invalid price change signature");
+       
+        require(_provider == signer, "Invalid price change signatures");
         prices[_provider][_dataKey] = _price;
     }
 

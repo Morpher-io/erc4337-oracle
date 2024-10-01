@@ -4,31 +4,32 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 
-import {USPD} from "../src/example/UspdToken.sol";
+import {DemoStablecoin} from "../src/example/DemoStablecoin.sol";
 import {DataDependent} from "../src/DataDependent.sol";
 import {OracleEntrypoint} from "../src/OracleEntrypoint.sol";
 error ErrMaxMintingLimit(uint remaining, uint exceeded);
 
 contract USPDTokenTest is Test {
-    USPD uspdToken;
+    DemoStablecoin stablecoinToken;
     OracleEntrypoint oracle;
     Account provider; // = bundler
 
     function setUp() public {
         oracle = new OracleEntrypoint();
         provider = makeAccount("provider");
-        emit log_address(provider.addr);
-        uspdToken = new USPD(address(oracle), provider.addr);
+        // emit log_address(provider.addr);
+        stablecoinToken = new DemoStablecoin(address(oracle), provider.addr);
 
         // set price for bid data
-        bytes memory prefix = "\x19Oracle Signed Price Change:\n116";
+        bytes memory prefix = "\x19Oracle Signed Price Change:\n148";
         bytes32 prefixedHashMessage = keccak256(
             abi.encodePacked(
                 prefix,
                 abi.encodePacked(
+                    block.chainid,
                     provider.addr,
                     uint256(0),
-                    uspdToken.ETH_USDT(),
+                    stablecoinToken.ETH_USDT(),
                     uint256(0.001 ether)
                 )
             )
@@ -38,18 +39,19 @@ contract USPDTokenTest is Test {
             provider.key,
             prefixedHashMessage
         );
-
+         
         vm.prank(provider.addr);
-        oracle.setPrice(provider.addr, 0, uspdToken.ETH_USDT(), 0.001 ether, r, s, v);
+        oracle.setPrice(provider.addr, 0, stablecoinToken.ETH_USDT(), 0.001 ether, r, s, v);
 
         // set price for ask data
         bytes32 prefixedHashMessage2 = keccak256(
             abi.encodePacked(
                 prefix,
                 abi.encodePacked(
+                    block.chainid,
                     provider.addr,
                     uint256(1),
-                    uspdToken.ETH_USDT(),
+                    stablecoinToken.ETH_USDT(),
                     uint256(0.001 ether)
                 )
             )
@@ -61,14 +63,14 @@ contract USPDTokenTest is Test {
         );
 
         vm.prank(provider.addr);
-        oracle.setPrice(provider.addr, 1, uspdToken.ETH_USDT(), 0.001 ether, r2, s2, v2);
+        oracle.setPrice(provider.addr, 1, stablecoinToken.ETH_USDT(), 0.001 ether, r2, s2, v2);
     }
 
     function testMinting() public {
         vm.warp(100000000);
         // first, we get the data requirements for the mint call
-        DataDependent.DataRequirement[] memory dataSources = uspdToken.requirements(
-            0x6a627842
+        DataDependent.DataRequirement[] memory dataSources = stablecoinToken.requirements(
+            bytes4(keccak256("mint(address)"))
         ); // mint selector
 
         // now, for each requirement the bundler will push the data in
@@ -78,15 +80,19 @@ contract USPDTokenTest is Test {
             value += 18 * 2 ** (8 * 25); // decimals
             value += 3000 * 10 ** 18; // price
 
-            bytes32 prefixedHashMessage = keccak256(
+            bytes memory prefix = "\x19Oracle Signed Data Op:\n168";
+           bytes32 prefixedHashMessage = keccak256(
+            abi.encodePacked(
+                prefix,
                 abi.encodePacked(
+                    block.chainid,
                     provider.addr,
-                    dataSources[i].requester,
                     uint256(2),
+                    dataSources[i].requester,
                     dataSources[i].dataKey,
                     bytes32(value)
                 )
-            );
+            ));
 
             (uint8 v, bytes32 r, bytes32 s) = vm.sign(
                 provider.key,
@@ -98,12 +104,12 @@ contract USPDTokenTest is Test {
         }
 
         address alice = makeAddr("alice");
-        emit log_address(alice);
+        // emit log_address(alice);
         vm.deal(alice, 1 ether);
         vm.startPrank(alice);
-        uspdToken.mint{value: 1 ether}(alice);
+        stablecoinToken.mint{value: 1 ether}(alice);
         assertEq(
-            uspdToken.balanceOf(alice),
+            stablecoinToken.balanceOf(alice),
             (0.999 ether * 3000)
         );
     }
