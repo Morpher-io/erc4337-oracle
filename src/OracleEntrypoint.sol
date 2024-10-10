@@ -16,9 +16,18 @@ contract OracleEntrypoint {
 
     event DataConsumed(address provider, address requester, bytes32 dataKey);
 
+    mapping(address => bool) public providerIsBurned;
 
     function deposit(address _target) public payable {
         deposits[_target] += msg.value;
+    }
+
+    // a one way functionality to burn a provider.
+    // in case a privat key gets compromised
+    // nobody can use that anymore in the oracle to
+    // write new data points.
+    function setProviderIsBurned() public {
+        providerIsBurned[msg.sender] = true;
     }
 
     function setPrice(
@@ -30,18 +39,34 @@ contract OracleEntrypoint {
         bytes32 _s,
         uint8 _v
     ) public {
-        require(nonces[_provider] == _nonce, "Invalid nonce for provider!");
+        require(
+            nonces[_provider] == _nonce,
+            "OracleEntrypoint: Invalid nonce for provider!"
+        );
+        require(
+            providerIsBurned[_provider] == false,
+            "OracleEntrypoint: Provider is burned, cannot update"
+        );
         nonces[_provider]++;
         bytes memory prefix = "\x19Oracle Signed Price Change:\n148";
         bytes32 prefixedHashMessage = keccak256(
             abi.encodePacked(
                 prefix,
-                abi.encodePacked(block.chainid, _provider, _nonce, _dataKey, _price)
+                abi.encodePacked(
+                    block.chainid,
+                    _provider,
+                    _nonce,
+                    _dataKey,
+                    _price
+                )
             )
         );
         address signer = ecrecover(prefixedHashMessage, _v, _r, _s);
-       
-        require(_provider == signer, "Invalid price change signatures");
+
+        require(
+            _provider == signer,
+            "OracleEntrypoint: Invalid price change signatures"
+        );
         prices[_provider][_dataKey] = _price;
     }
 
@@ -61,8 +86,13 @@ contract OracleEntrypoint {
     ) public {
         require(
             nonces[_provider] == _nonce,
-            "Invalid nonce for provider!"
+            "OracleEntrypoint: Invalid nonce for provider!"
         );
+        require(
+            providerIsBurned[_provider] == false,
+            "OracleEntrypoint: Provider is burned, cannot update"
+        );
+
         nonces[_provider]++;
         bool verified = _checkProviderSignature(
             _provider,
@@ -74,10 +104,8 @@ contract OracleEntrypoint {
             _r,
             _s
         );
-        require(verified, "Invalid provider signature!");
-        data[_provider][_requester][
-            _dataKey
-        ] = _dataValue;
+        require(verified, "OracleEntrypoint: Invalid provider signature!");
+        data[_provider][_requester][_dataKey] = _dataValue;
     }
 
     function consumeData(
@@ -88,7 +116,7 @@ contract OracleEntrypoint {
         uint256 price = prices[_provider][_dataKey];
         require(
             deposits[msg.sender] >= price,
-            "Not enough money to pay for data!"
+            "OracleEntrypoint: Not enough money to pay for data!"
         );
         payable(_provider).transfer(price);
         deposits[msg.sender] = uint256(deposits[msg.sender] - price);

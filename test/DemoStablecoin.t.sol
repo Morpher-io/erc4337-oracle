@@ -113,4 +113,78 @@ contract USPDTokenTest is Test {
             (0.999 ether * 3000)
         );
     }
+
+    function testProviderIsBurned() public {
+        vm.warp(100000000);
+        // first, we get the data requirements for the mint call
+        DataDependent.DataRequirement[] memory dataSources = stablecoinToken.requirements(
+            bytes4(keccak256("mint(address)"))
+        ); // mint selector
+
+        // now, for each requirement the bundler will push the data in
+        for (uint256 i = 0; i < dataSources.length; i++) {
+            assertEq(dataSources[i].provider, provider.addr); // provider should be the bundler :)
+            uint256 value = block.timestamp * 1000 * 2 ** (8 * 26); // timestamp
+            value += 18 * 2 ** (8 * 25); // decimals
+            value += 3000 * 10 ** 18; // price
+
+            bytes memory prefix = "\x19Oracle Signed Data Op:\n168";
+           bytes32 prefixedHashMessage = keccak256(
+            abi.encodePacked(
+                prefix,
+                abi.encodePacked(
+                    block.chainid,
+                    provider.addr,
+                    uint256(2),
+                    dataSources[i].requester,
+                    dataSources[i].dataKey,
+                    bytes32(value)
+                )
+            ));
+
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+                provider.key,
+                prefixedHashMessage
+            );
+
+            vm.prank(provider.addr);
+            oracle.storeData(provider.addr, dataSources[i].requester, 2, dataSources[i].dataKey, bytes32(value), r, s, v);
+        }
+        
+        vm.prank(provider.addr);
+        oracle.setProviderIsBurned(); //burn provider
+
+        vm.warp(100000000);
+
+        // now, for each requirement the bundler will push the data in
+        for (uint256 i = 0; i < dataSources.length; i++) {
+            assertEq(dataSources[i].provider, provider.addr); // provider should be the bundler :)
+            uint256 value = block.timestamp * 1000 * 2 ** (8 * 26); // timestamp
+            value += 18 * 2 ** (8 * 25); // decimals
+            value += 3000 * 10 ** 18; // price
+
+            bytes memory prefix = "\x19Oracle Signed Data Op:\n168";
+           bytes32 prefixedHashMessage = keccak256(
+            abi.encodePacked(
+                prefix,
+                abi.encodePacked(
+                    block.chainid,
+                    provider.addr,
+                    uint256(3),
+                    dataSources[i].requester,
+                    dataSources[i].dataKey,
+                    bytes32(value)
+                )
+            ));
+
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+                provider.key,
+                prefixedHashMessage
+            );
+
+            vm.prank(provider.addr);
+            vm.expectRevert("OracleEntrypoint: Provider is burned, cannot update");
+            oracle.storeData(provider.addr, dataSources[i].requester, 3, dataSources[i].dataKey, bytes32(value), r, s, v);
+        }
+    }
 }
